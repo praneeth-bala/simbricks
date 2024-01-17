@@ -1,0 +1,2 @@
+./emulation/bin/emulator -a 1.2 -b 0 -c ./artifact_eval/testbed.config -d 10 -e 0 -f ./artifact_eval/keys -g 1.0 -i 100 -k 0 -m client -n 1000000 -o udp -p ./artifact_eval/nodeops -q kv -s ./artifact_eval/stats -t zipf -v 128 -w netcache -y fixed -z 1 -D 0 -F none -I 0 -J 1 -K 1 -L 1 -M 0 -N 1 -O 0
+./emulation/bin/emulator -b 0 -c ./artifact_eval/testbed.config -f ./artifact_eval/keys -r 0 -e 0 -k 0 -l 0 -m server -n 1000000 -o udp -q kv -v 128 -w netcache -x 1 -z 1 -I 0 -J 0 -K 0 -L 1 -M 0 -N 1 -O 0

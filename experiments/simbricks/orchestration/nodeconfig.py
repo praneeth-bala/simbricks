@@ -40,28 +40,23 @@ class AppConfig():
         return []
 
     def prepare_post_cp(self) -> tp.List[str]:
-        """Commands to run to prepare this application after the checkpoint is
-        restored."""
+        """Commands to run to prepare this application after checkpoint
+        restore."""
         return []
 
     def config_files(self) -> tp.Dict[str, tp.IO]:
         """
-        Additional files to put inside the node, which are mounted under
-        `/tmp/guest/`.
+        Additional files to put inside the node, for example, necessary config
+        files or kernel modules.
 
-        Specified in the following format: `filename_inside_node`:
-        `IO_handle_of_file`
+        Specified in the following format: `filename_inside_node`: `IO_handle_to
+        read_file`
         """
         return {}
 
     def strfile(self, s: str):
-        """
-        Helper function to convert a string to an IO handle for usage in
-        `config_files()`.
-
-        Using this, you can create a file with the string as its content on the
-        node.
-        """
+        """Helper function to convert a string to an IO handle for usage in
+        `config_files()`."""
         return io.BytesIO(bytes(s, encoding='UTF-8'))
 
 
@@ -70,12 +65,7 @@ class NodeConfig():
 
     def __init__(self):
         self.sim = 'qemu'
-        """The concrete simulator that runs this node config. This is used to
-        use execute different commands depending on the concrete simulator,
-        e.g., which command to use to end the simulation.
-
-        TODO(Kaufi-Jonas): This is ugly. Refactor necessary commands to be
-        provided by the simulator's class directly."""
+        """Name of simulator to run."""
         self.ip = '10.0.0.1'
         """IP address."""
         self.prefix = 24
@@ -87,16 +77,11 @@ class NodeConfig():
         self.memory = 8 * 1024
         """Amount of system memory in MB."""
         self.disk_image = 'base'
-        """Name of disk image to use."""
+        """Disk image to use."""
         self.mtu = 1500
         """Networking MTU."""
         self.nockp = 0
-        """Do not create a checkpoint in Gem5.
-
-        TODO(Kaufi-Jonas): Seems we don't need this anymore since we specify
-        whether to take a checkpoint experiment-wide. Otherwise, refactor this
-        into simulator-specific class.
-        """
+        """Do not make checkpoint in Gem5."""
         self.app: tp.Optional[AppConfig] = None
         """Application to run on simulated host."""
         self.kcmd_append = ''
@@ -161,22 +146,17 @@ class NodeConfig():
 
     def config_files(self) -> tp.Dict[str, tp.IO]:
         """
-        Additional files to put inside the node, which are mounted under
-        `/tmp/guest/`.
+        Additional files to put inside the node, for example, necessary config
+        files or kernel modules.
 
-        Specified in the following format: `filename_inside_node`:
-        `IO_handle_of_file`
+        Specified in the following format: `filename_inside_node`: `IO_handle_to
+        read_file`
         """
         return self.app.config_files()
 
     def strfile(self, s: str):
-        """
-        Helper function to convert a string to an IO handle for usage in
-        `config_files()`.
-
-        Using this, you can create a file with the string as its content on the
-        node.
-        """
+        """Helper function to convert a string to an IO handle for usage in
+        `config_files()`."""
         return io.BytesIO(bytes(s, encoding='UTF-8'))
 
 
@@ -448,6 +428,65 @@ class PingClient(AppConfig):
 
     def run_cmds(self, node):
         return [f'ping {self.server_ip} -c 10']
+    
+
+class HttpServer(AppConfig):
+
+    def config_files(self):
+        return {"curl.txt":open("/workspaces/simbricks/experiments/curl.txt","rb"),"sss":open("/workspaces/simbricks/experiments/simple-socket-stats/sss","rb")}    
+
+    def run_cmds(self, node):
+        # return [f'tcpdump -w ./sock_log.txt -s 120 -c 100000000 port 9000 & python3 -m http.server 9000 --bind 0.0.0.0']
+        return [f'mount -t proc proc /proc && sysctl -w net.ipv4.tcp_congestion_control=reno && ./sss -i --time 2000 --interval 1 --out sock_log.txt & python3 -m http.server 9000 --bind 0.0.0.0']
+
+class HttpClient(AppConfig):
+
+    def config_files(self):
+        return {"getter":open("/workspaces/simbricks/experiments/getter","rb")}
+
+    def run_cmds(self, node):
+        return [f'sleep 1 && ./getter 10.0.0.2 9000']
+        # return [f'mount -t proc proc /proc && sysctl -w net.ipv4.tcp_window_scaling=0 && sleep 1 && ./socket 10.0.0.2 9000']
+
+class NetCacheServer(AppConfig):
+
+    node_id = 0
+
+    def config_files(self):
+        return {"pegasus.tar":open("/workspaces/simbricks/experiments/pegasus.tar","rb")}    
+
+    def run_cmds(self, node):
+        return [f'tar -xvf ./pegasus.tar && cd ./pegasus', f'./emulation/bin/emulator -b 0 -c ./artifact_eval/testbed.config -f ./artifact_eval/keys -r 0 -e '+str(self.node_id)+' -k 0 -l 0 -m server -n 1000000 -o udp -q kv -v 128 -w netcache -x 1 -z 2 -I 0 -J 0 -K 0 -L 1 -M 0 -N 1 -O 0']
+
+class NetCacheClient(AppConfig):
+
+    node_id = 0
+
+    def config_files(self):
+        return {"pegasus.tar":open("/workspaces/simbricks/experiments/pegasus.tar","rb")}    
+
+    def run_cmds(self, node):
+        return [f'tar -xvf ./pegasus.tar && cd ./pegasus && sleep 1',f'./emulation/bin/emulator -a 1.8 -b 0 -c ./artifact_eval/testbed.config -d 1 -e '+str(self.node_id)+' -f ./artifact_eval/keys -g 0.3 -i 100 -k 0 -m client -n 1000000 -o udp -p ./artifact_eval/nodeops -q kv -s ./artifact_eval/stats -t zipf -v 128 -w netcache -y fixed -z 2 -D 0 -F none -I 0 -J 1 -K 0 -L 1 -M 0 -N 1 -O 0']
+
+class PegasusServer(AppConfig):
+
+    node_id = 0
+
+    def config_files(self):
+        return {"pegasus.tar":open("/workspaces/simbricks/experiments/pegasus.tar","rb")}    
+
+    def run_cmds(self, node):
+        return [f'tar -xvf ./pegasus.tar && cd ./pegasus', f'./emulation/bin/emulator -b 0 -c ./artifact_eval/testbed.config -f ./artifact_eval/keys -r 0 -e '+str(self.node_id)+' -k 0 -l 0 -m server -n 1000000 -o udp -q kv -v 128 -w pegasus -x 1 -z 2 -I 0 -J 0 -K 0 -L 1 -M 0 -N 1 -O 0']
+
+class PegasusClient(AppConfig):
+
+    node_id = 0
+
+    def config_files(self):
+        return {"pegasus.tar":open("/workspaces/simbricks/experiments/pegasus.tar","rb")}    
+
+    def run_cmds(self, node):
+        return [f'tar -xvf ./pegasus.tar && cd ./pegasus && sleep 1', f'./emulation/bin/emulator -a 1.8 -b 0 -c ./artifact_eval/testbed.config -d 1 -e '+str(self.node_id)+' -f ./artifact_eval/keys -g 0.3 -i 50000 -k 0 -m client -n 1000000 -o udp -p ./artifact_eval/nodeops -q kv -s ./artifact_eval/stats -t zipf -v 128 -w pegasus -y fixed -z 2 -D 0 -F none -I 0 -J 1 -K 0 -L 1 -M 0 -N 1 -O 0']
 
 
 class IperfTCPServer(AppConfig):
